@@ -113,7 +113,7 @@
 <header>
   <h1>ALTTPR <span>Unified</span> Randomizer</h1>
   <button id="r-toggle" aria-expanded="false" aria-controls="rando-bar" title="Show or hide the randomizer settings">Randomizer</button>
-  <label class="filebtn" for="rom-input" title="Play a seed you already have (.sfc)">Load ROM…</label>
+  <label class="filebtn" for="rom-input" title="Play a seed .sfc you already have, or pick your Japanese 1.0 ROM to randomize it">Load ROM…</label>
   <!-- No `accept` filter: iOS doesn't know the .sfc/.smc types and would gray
        the files out. The ROM is checked in JS after it's picked instead. -->
   <input type="file" id="rom-input">
@@ -587,6 +587,9 @@
     if (body < 0x80000 || body > 0x800000 || body % 0x8000 !== 0) {
       if (!confirm('"' + file.name + '" doesn\'t look like a SNES ROM. Load it anyway?')) return;
     }
+    // An unrandomized Japanese 1.0 ROM: use it as the base ROM and generate
+    // a seed from the Randomizer settings instead of booting the vanilla game.
+    if (window.UnifiedRando && await window.UnifiedRando.useIfBaseRom(bytes)) return;
     if (window.EJS_emulator) {
       if (!confirm('Load a different ROM? The current game will be closed.')) return;
     }

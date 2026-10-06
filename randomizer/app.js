@@ -294,7 +294,22 @@ async function generateAndPlay() {
   }
 }
 
+// Called by "Load ROM…": if the file is the plain Japanese 1.0 ROM, save it
+// as the base ROM and generate a seed with the current settings.
+async function useIfBaseRom(bytes) {
+  let b = stripHeader(bytes);
+  if (b.length !== 0x100000 || md5(b) !== JP10_MD5) return false;
+  await kvSet('base-jp10', b.slice());
+  await refreshBaseStatus();
+  document.body.classList.add('rando-open');
+  $('r-toggle').setAttribute('aria-expanded', 'true');
+  status('That\'s the original game, so it\'s now your base ROM. Generating a seed…', 'ok');
+  generateAndPlay();
+  return true;
+}
+
 export function init() {
+  window.UnifiedRando = { useIfBaseRom };
   loadFields();
   FIELDS.forEach((id) => $(id) && $(id).addEventListener('change', saveFields));
   $('r-base-input').addEventListener('change', async (ev) => {
