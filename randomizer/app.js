@@ -1,6 +1,7 @@
 // Randomizer bar: settings dropdowns -> seed generation (in a worker) ->
 // patch the player's own Japanese 1.0 ROM in the browser -> boot it.
 import { md5 } from './md5.js';
+import { parseSprite, applySprite } from './sprite.js';
 
 const JP10_MD5 = '03a63945398191337e896e5771f77173';   // ALttP (Japan) v1.0, headerless
 const BASE_MD5 = 'edc01f3db798ae4dfe21101311598d44';   // after the 2024-02-18 base patch (alttpr.com build)
@@ -264,6 +265,10 @@ async function generateAndPlay() {
     const rom = base;
     for (const w of res.patch) for (const [off, bytes] of Object.entries(w)) rom.set(bytes, Number(off));
     applyCosmetics(rom);
+    const sprite = await kvGet('sprite').catch(() => null);
+    if (sprite && sprite.bytes) {
+      try { applySprite(rom, parseSprite(sprite.bytes)); } catch (e) { console.warn('[randomizer] sprite skipped:', e); }
+    }
     updateChecksum(rom);
 
     const m = res.spoiler.meta || {};
@@ -308,7 +313,41 @@ async function useIfBaseRom(bytes) {
   return true;
 }
 
+async function refreshSprite() {
+  const sp = await kvGet('sprite').catch(() => null);
+  $('r-sprite-name').textContent = sp ? sp.label : 'Default Link';
+  $('r-sprite-name').title = sp ? sp.label : '';
+  $('r-sprite-clear').hidden = !sp;
+}
+
+function spriteLabel(info, fileName) {
+  if (!info.name) return fileName;
+  return info.author ? `${info.name} by ${info.author}` : info.name;
+}
+
 export function init() {
+  $('r-sprite-input').addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const info = parseSprite(bytes);
+      const label = spriteLabel(info, f.name.replace(/\.[^.]+$/, ''));
+      await kvSet('sprite', { bytes: bytes.slice(), label });
+      status(`Sprite set: ${label}. It applies to the next seed you generate.`, 'ok');
+    } catch (e) {
+      status(String(e.message || e), 'bad');
+    }
+    refreshSprite();
+  });
+  $('r-sprite-clear').addEventListener('click', async () => {
+    await kvDel('sprite');
+    status('Back to the default Link sprite for the next seed.', 'ok');
+    refreshSprite();
+  });
+  refreshSprite();
+
   window.UnifiedRando = { useIfBaseRom };
   loadFields();
   FIELDS.forEach((id) => $(id) && $(id).addEventListener('change', saveFields));
