@@ -2,6 +2,9 @@
 // patch the player's own Japanese 1.0 ROM in the browser -> boot it.
 import { md5 } from './md5.js';
 import { parseSprite, applySprite } from './sprite.js';
+import { MsuPlayer, trackNumber } from './msu.js';
+
+const msu = new MsuPlayer();
 
 const JP10_MD5 = '03a63945398191337e896e5771f77173';   // ALttP (Japan) v1.0, headerless
 const BASE_MD5 = 'edc01f3db798ae4dfe21101311598d44';   // after the 2024-02-18 base patch (alttpr.com build)
@@ -232,6 +235,7 @@ function showLast() {
 const TRACKER_DI = { standard: 'standard', mc: 'mapcompass', mcs: 'mapcompasskeys', full: 'keysanity' };
 
 async function generateAndPlay() {
+  if (msu.count) msu.unlock();
   const btn = $('r-generate');
   if (btn.disabled) return;
   if (!(await refreshBaseStatus())) {
@@ -265,6 +269,7 @@ async function generateAndPlay() {
     const rom = base;
     for (const w of res.patch) for (const [off, bytes] of Object.entries(w)) rom.set(bytes, Number(off));
     applyCosmetics(rom);
+    if (msu.count) rom[0x18021A] = 0x01;   // game music off; the MSU pack plays instead
     const sprite = await kvGet('sprite').catch(() => null);
     if (sprite && sprite.bytes) {
       try { applySprite(rom, parseSprite(sprite.bytes)); } catch (e) { console.warn('[randomizer] sprite skipped:', e); }
@@ -325,6 +330,72 @@ function spriteLabel(info, fileName) {
   return info.author ? `${info.name} by ${info.author}` : info.name;
 }
 
+// ── MSU-1 packs ──────────────────────────────────────────────────────────────
+function packName(files) {
+  const n = files.map((f) => f.name.replace(/-\d+\.pcm$/i, ''));
+  return n.every((x) => x === n[0]) ? n[0] : 'MSU-1 pack';
+}
+
+function showMsu(name) {
+  $('r-msu-name').textContent = msu.count ? `${name} (${msu.count} tracks)` : 'Off';
+  $('r-msu-clear').hidden = !msu.count;
+}
+
+async function loadMsuPack(fileList) {
+  const files = [...fileList].filter((f) => trackNumber(f.name) !== null);
+  if (!files.length) throw new Error('Choose the .pcm files from an MSU-1 pack (named like pack-1.pcm, pack-2.pcm, …).');
+  const tracks = new Map(files.map((f) => [trackNumber(f.name), f]));
+  const name = packName(files);
+  msu.setTracks(tracks);
+  showMsu(name);
+  msu.start();
+  status(`Saving ${name} in this browser…`);
+  try {
+    await kvSet('msu-pack', { name, tracks: [...tracks].map(([n, f]) => [n, new Blob([f], { type: 'application/octet-stream' })]) });
+    status(`MSU-1 pack ready: ${name}. It plays on seeds you generate from now on.`, 'ok');
+  } catch (e) {
+    console.warn('[msu] could not store pack', e);
+    status(`MSU-1 pack ready for this visit: ${name}. It was too big to save in the browser, so choose it again next time.`, 'ok');
+  }
+}
+
+// Called by "Load ROM…" for seed files: turn the game's music off when a pack
+// is loaded, so the pack plays instead (randomizer ROMs only).
+function prepareLoadedRom(bytes) {
+  if (!msu.count) return bytes;
+  const off = bytes.length % 1024 === 512 ? 512 : 0;
+  if (bytes.length < off + 0x200000 || bytes[off + 0x7FC0] !== 0x56 || bytes[off + 0x7FC1] !== 0x54) return bytes;
+  const rom = bytes.slice(off);
+  rom[0x18021A] = 0x01;
+  updateChecksum(rom);
+  msu.unlock();
+  return rom;
+}
+
+function initMsu() {
+  $('r-msu-input').addEventListener('change', async (ev) => {
+    const files = ev.target.files;
+    msu.unlock();
+    try { await loadMsuPack(files); } catch (e) { status(String(e.message || e), 'bad'); }
+    ev.target.value = '';
+  });
+  $('r-msu-clear').addEventListener('click', async () => {
+    msu.setTracks(new Map());
+    showMsu('');
+    await kvDel('msu-pack');
+    status('MSU-1 off. Seeds you generate from now on use the game\'s own music.', 'ok');
+  });
+  // iOS only starts audio from a tap, so (re)unlock on any tap while a pack is loaded
+  ['touchend', 'click', 'keydown'].forEach((t) => document.addEventListener(t, () => { if (msu.count) msu.unlock(); }, true));
+  kvGet('msu-pack').then((p) => {
+    if (p && p.tracks && p.tracks.length) {
+      msu.setTracks(new Map(p.tracks));
+      showMsu(p.name);
+      msu.start();
+    }
+  }).catch(() => {});
+}
+
 export function init() {
   $('r-sprite-input').addEventListener('change', async (ev) => {
     const f = ev.target.files && ev.target.files[0];
@@ -348,7 +419,8 @@ export function init() {
   });
   refreshSprite();
 
-  window.UnifiedRando = { useIfBaseRom };
+  window.UnifiedRando = { useIfBaseRom, prepareLoadedRom };
+  initMsu();
   loadFields();
   FIELDS.forEach((id) => $(id) && $(id).addEventListener('change', saveFields));
   $('r-base-input').addEventListener('change', async (ev) => {

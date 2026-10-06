@@ -60,7 +60,9 @@
   #r-generate { background: #1f6f3a; border-color: #2a8a4a; font-weight: 600; }
   #r-generate:disabled { opacity: .6; cursor: progress; }
   #r-base-label.ok { color: var(--accent); }
-  #r-base-input, #r-sprite-input { display: none; }
+  #r-base-input, #r-sprite-input, #r-msu-input { display: none; }
+  #r-msu-name { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text); max-width: 16em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #rando-bar .sprite-field { display: flex; flex-direction: column; gap: 3px; color: var(--dim); font-size: 11px;
     text-transform: uppercase; letter-spacing: .04em; }
   #rando-bar .sprite-row { display: flex; gap: 6px; text-transform: none; letter-spacing: 0; }
@@ -265,6 +267,14 @@
         </div>
         <span id="r-sprite-name">Default Link</span>
       </div>
+      <div class="f sprite-field">MSU-1 music
+        <div class="sprite-row">
+          <label class="filebtn" for="r-msu-input" title="Choose all the .pcm files of an MSU-1 pack">Choose pack…</label>
+          <input type="file" id="r-msu-input" multiple>
+          <button id="r-msu-clear" hidden title="Use the game's own music again">Off</button>
+        </div>
+        <span id="r-msu-name">Off</span>
+      </div>
       <label class="f">Item quickswap
         <select id="r-quickswap">
           <option value="off" selected>Off</option>
@@ -274,6 +284,9 @@
       <p class="hint">Sprites: download a <code>.zspr</code> from the
         <a href="https://alttpr.com/en/sprites" target="_blank" rel="noopener">alttpr.com sprite gallery</a>, then choose it here.
         It's used for every seed you generate until you press Default.</p>
+      <p class="hint">MSU-1: choose all the <code>.pcm</code> files of an ALttP MSU-1 pack at once (on iPhone, tap
+        <b>Select</b> in the file picker, then select them all). Seeds you generate afterwards play the pack instead
+        of the game's music, including seed files opened with Load ROM.</p>
     </div>
   </details>
   <div class="actions">
@@ -615,6 +628,7 @@
     // go back to the World / Dungeon items selectors.
     trackerExtra = null;
     saveSettings();
+    if (window.UnifiedRando) bytes = window.UnifiedRando.prepareLoadedRom(bytes);
     startRom(bytes, file.name, true);
   });
 
